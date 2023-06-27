@@ -1,0 +1,5 @@
+(library
+ (name definitional_interpreters)
+ (libraries base stdio ppx_show.runtime)
+ (preprocess
+  (pps ppx_jane ppx_show)))
