@@ -47,16 +47,16 @@ let rec eval r e =
   match r with
   | Const k -> evcon k
   | Var x -> e x
-  | Appl a -> (
-      match eval a.opr e with
+  | Appl { opr; opnd } -> (
+      match eval opr e with
       (* This is the only application.
          Note that the order of application in the defined language is call-by-value, as it is in OCaml *)
-      | FunVal f -> f (eval a.opnd e)
+      | FunVal f -> f (eval opnd e)
       | _ -> raise TypeError)
   | Lambda l -> evlambda l e
-  | Cond c -> (
-      match eval c.prem e with
-      | Bool b -> if b then eval c.conc e else eval c.altr e
+  | Cond { prem; conc; altr } -> (
+      match eval prem e with
+      | Bool b -> if b then eval conc e else eval altr e
       | _ -> raise TypeError)
   | LetRec r ->
       let rec e' x =
@@ -68,7 +68,7 @@ let rec eval r e =
 and evcon k = Int k
 
 (** lambda expression produced -> Closr *)
-and evlambda l e = FunVal (fun a -> eval l.body (ext l.fp a e))
+and evlambda { fp; body } e = FunVal (fun a -> eval body (ext fp a e))
 
 (*** environment is produced -> Init *)
 let init_env = function

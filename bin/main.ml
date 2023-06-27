@@ -1,5 +1,5 @@
 open Stdio
-open Definitional_interpreters.First_order_interpreter
+open Definitional_interpreters.Continuation_passing_interpreter
 
 let () =
   printf "%s\n"

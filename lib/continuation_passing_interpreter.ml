@@ -35,6 +35,12 @@ and env =
   | Simp of { bvar : var; bval : value; old : env }
   | Rec of { letx : let_rec; old : env }
 
+and cont =
+  | Fin
+  | Evopn of { ap : appl; en : env; next : cont }
+  | Apfun of { func : value; next : cont }
+  | Branch of { cn : cond; en : env; next : cont }
+
 [@@@warning "+27"]
 
 let succ a = match a with Int n -> Int (n + 1) | _ -> raise TypeError
@@ -45,8 +51,7 @@ let equal a b =
   | Bool a, Bool b -> Bool (Bool.equal a b)
   | _ -> raise TypeError
 
-(** Never calls any other recursive function, and can never call itself more times than the length of the searched list.
-    Not serious! *)
+(** Never calls any other recursive function, and can never call itself more times than the length of the searched list *)
 let rec get e x =
   match e with
   | Init -> (
@@ -61,49 +66,44 @@ let rec get e x =
         FunVal (Closr { lam = letx.dexp; en = e })
       else get old x
 
-(** Serious *)
-let rec eval r e =
+let rec eval r e c =
   match r with
-  (* not serious *)
-  | Const k -> evcon k
-  (* not serious *)
-  | Var x -> get e x
-  (* The order of application is still dependent to the defining language, in this case, call-by-value from OCaml.
-     To CPS-transform, we need four serious operations, in the order of (for the defined language to be CBV):
-     1. operator evaluation
-     2. operand evaluation
-     3. apply 1 to 2
-     4. apply c to the continuation *)
-  | Appl { opr; opnd } -> apply (eval opr e) (eval opnd e)
-  (* not serious *)
-  | Lambda l -> FunVal (Closr { lam = l; en = e })
-  | Cond { prem; conc; altr } -> (
-      (* To CPS-transform, we need three serious operations:
-         1. premiss evaluation
-         2. conclusion/alternative evaluation
-         3. apply c to 2 *)
-      match eval prem e with
-      | Bool b -> if b then eval conc e else eval altr e
-      | _ -> raise TypeError)
-  (* serious, but does not contain serious operands *)
-  | LetRec r -> eval r.rbody (Rec { letx = r; old = e })
+  | Const k -> cont c (evcon k)
+  | Var x -> cont c (get e x)
+  (* 1. call eval to evaluate the operator
+     2. give this call a continuation that calls eval to evaluate the operand
+     3. give this call a continuation that calls apply to apply the operator to the operand
+     4. give this call a continuation that calls the continuation c to return the result
+     Two continuations produced *)
+  | Appl ap -> eval ap.opr e (Evopn { ap; en = e; next = c })
+  | Lambda l -> cont c (FunVal (Closr { lam = l; en = e }))
+  | Cond cn ->
+      (* One continuation produced *)
+      eval cn.prem e (Branch { cn; en = e; next = c })
+  | LetRec r -> eval r.rbody (Rec { letx = r; old = e }) c
 
-(** Serious *)
-and apply f a =
+and apply f a c =
   match f with
   | FunVal f -> (
       match f with
-      (* serious, but does not contain serious operands *)
       | Closr { lam; en } ->
-          eval lam.body (Simp { bvar = lam.fp; bval = a; old = en })
-      (* not serious *)
-      | Sc -> succ a
-      (* not serious *)
-      | Eq1 -> FunVal (Eq2 { arg1 = a })
-      (* not serious *)
-      | Eq2 f -> equal f.arg1 a)
+          eval lam.body (Simp { bvar = lam.fp; bval = a; old = en }) c
+      | Sc -> cont c (succ a)
+      | Eq1 -> cont c (FunVal (Eq2 { arg1 = a }))
+      | Eq2 f -> cont c (equal f.arg1 a))
   | _ -> raise TypeError
+
+and cont c a =
+  match c with
+  | Fin -> a
+  | Evopn { ap; en; next } -> eval ap.opnd en (Apfun { func = a; next })
+  | Apfun { func; next } -> apply func a next
+  | Branch { cn = { conc; altr; _ }; en; next } -> (
+      match a with
+      | Bool b -> if b then eval conc en next else eval altr en next
+      | _ -> raise TypeError)
 
 and evcon k = Int k
 
-let interpret r = eval r Init
+(* One continuation produced *)
+let interpret r = eval r Init Fin
