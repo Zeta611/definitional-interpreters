@@ -44,7 +44,6 @@ let equal a b =
   | Bool a, Bool b -> Bool (Bool.equal a b)
   | _ -> raise TypeError
 
-(** environment is produced -> Simp *)
 let ext z a e x = if String.equal x z then a else e x
 
 let rec eval r e c =
@@ -62,7 +61,6 @@ let rec eval r e c =
         | _ -> raise TypeError)
   | LetRec r ->
       let rec e' x =
-        (* environment is produced -> Rec *)
         if String.equal x r.dvar then evlambda r.dexp e' else e x
       in
       eval r.rbody e' c
@@ -70,15 +68,10 @@ let rec eval r e c =
       eval ebody (ext escv (FunVal (fun (a, _) -> c a)) e) c
 
 and evcon k = Int k
-
-(** lambda expression produced -> Closr *)
 and evlambda { fp; body } e = FunVal (fun (a, c) -> eval body (ext fp a e) c)
 
-(*** environment is produced -> Init *)
 let init_env = function
-  (* lambda expression produced -> Sc *)
   | "succ" -> FunVal (fun (a, c) -> c (succ a))
-  (* lambda expression produced twice -> Eq1/2 *)
   | "equal" -> FunVal (fun (a, c) -> c (FunVal (fun (b, c') -> c' (equal a b))))
   | x -> raise (NameError x)
 
